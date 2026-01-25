@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-procurement
+    ports:
+      - "8080:80"
+    environment:
+      - DATABASE_URL=mysql+pymysql://income:Vk7#a3DfGtYhJkL9@118.195.236.243:53890/income
+      - DEEPSEEK_API_KEY=sk-0d58e31989a2447daec86f84d4f11dec
+      - DEEPSEEK_API_URL=https://api.deepseek.com/v1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
