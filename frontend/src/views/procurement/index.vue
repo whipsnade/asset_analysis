@@ -64,29 +64,6 @@
               开始智能分析
             </el-button>
           </div>
-
-          <!-- Log Panel -->
-          <div class="log-panel" v-if="logs.length > 0 || analyzing">
-            <div class="log-header">
-              <span>AI调用日志</span>
-              <el-button size="small" link @click="clearLogs">清空</el-button>
-            </div>
-            <div class="log-content" ref="logContainer">
-              <div 
-                v-for="(log, index) in logs" 
-                :key="index" 
-                class="log-line"
-                :class="'log-' + log.level.toLowerCase()"
-              >
-                <span class="log-time">{{ log.time }}</span>
-                <span class="log-level">[{{ log.level }}]</span>
-                <span class="log-msg">{{ log.message }}</span>
-              </div>
-              <div v-if="analyzing && logs.length === 0" class="log-line log-info">
-                <span class="log-msg">等待日志...</span>
-              </div>
-            </div>
-          </div>
         </el-card>
       </el-col>
 
@@ -215,12 +192,70 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- Progress Dialog -->
+    <el-dialog 
+      v-model="progressDialogVisible" 
+      title="AI智能分析中" 
+      width="650px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="!analyzing"
+    >
+      <div class="progress-content">
+        <div class="progress-status">
+          <el-icon v-if="analyzing" class="is-loading" :size="20"><Loading /></el-icon>
+          <el-icon v-else-if="analyzeResult.status === 'completed'" :size="20" color="#67c23a"><CircleCheck /></el-icon>
+          <el-icon v-else :size="20" color="#f56c6c"><CircleClose /></el-icon>
+          <span class="status-text">{{ progressStatusText }}</span>
+        </div>
+        
+        <el-progress 
+          :percentage="progressPercentage" 
+          :status="progressStatus"
+          :stroke-width="12"
+          style="margin: 15px 0;"
+        />
+        
+        <div class="progress-log-panel">
+          <div class="progress-log-header">
+            <span>DeepSeek API 调用日志</span>
+            <span class="log-count">{{ logs.length }} 条</span>
+          </div>
+          <div class="progress-log-content" ref="logContainer">
+            <div 
+              v-for="(log, index) in logs" 
+              :key="index" 
+              class="log-line"
+              :class="'log-' + log.level.toLowerCase()"
+            >
+              <span class="log-time">{{ log.time }}</span>
+              <span class="log-level">[{{ log.level }}]</span>
+              <span class="log-msg">{{ log.message }}</span>
+            </div>
+            <div v-if="analyzing && logs.length === 0" class="log-line log-info">
+              <span class="log-msg">正在连接AI服务...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button v-if="!analyzing" type="primary" @click="progressDialogVisible = false">
+          确定
+        </el-button>
+        <el-button v-else disabled>
+          <el-icon class="is-loading"><Loading /></el-icon>
+          分析中...
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, nextTick, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { analyzeText, analyzeFile, exportResult, getLogStreamUrl } from '@/api/procurement'
 
 const inputType = ref('text')
@@ -230,8 +265,10 @@ const analyzing = ref(false)
 const uploadRef = ref(null)
 const exportDialogVisible = ref(false)
 const exporting = ref(false)
+const progressDialogVisible = ref(false)
 const logContainer = ref(null)
 const logs = ref([])
+const progressPercentage = ref(0)
 let eventSource = null
 let sessionId = null
 
@@ -262,6 +299,20 @@ const statusType = computed(() => {
   if (analyzeResult.status === 'completed') return 'success'
   if (analyzeResult.status === 'failed') return 'danger'
   return 'info'
+})
+
+const progressStatus = computed(() => {
+  if (analyzing.value) return ''
+  if (analyzeResult.status === 'completed') return 'success'
+  if (analyzeResult.status === 'failed') return 'exception'
+  return ''
+})
+
+const progressStatusText = computed(() => {
+  if (analyzing.value) return '正在使用 DeepSeek AI 分析采购需求...'
+  if (analyzeResult.status === 'completed') return `分析完成，共匹配 ${analyzeResult.details?.length || 0} 条需求`
+  if (analyzeResult.status === 'failed') return '分析失败，请重试'
+  return '准备中...'
 })
 
 const getConfidenceType = (score) => {
@@ -327,17 +378,24 @@ const analyzeTextContent = async () => {
     return
   }
 
+  // Reset and show progress dialog
+  logs.value = []
+  progressPercentage.value = 10
+  progressDialogVisible.value = true
   analyzing.value = true
   startLogStream()
   
   try {
+    progressPercentage.value = 30
     const res = await analyzeText(textContent.value, sessionId)
     Object.assign(analyzeResult, res)
+    progressPercentage.value = 100
     ElMessage.success('分析完成')
   } catch (error) {
     analyzeResult.status = 'failed'
     analyzeResult.message = '分析失败'
     analyzeResult.details = []
+    progressPercentage.value = 100
   } finally {
     analyzing.value = false
     stopLogStream()
@@ -350,17 +408,24 @@ const analyzeFileContent = async () => {
     return
   }
 
+  // Reset and show progress dialog
+  logs.value = []
+  progressPercentage.value = 10
+  progressDialogVisible.value = true
   analyzing.value = true
   startLogStream()
   
   try {
+    progressPercentage.value = 30
     const res = await analyzeFile(selectedFile.value, sessionId)
     Object.assign(analyzeResult, res)
+    progressPercentage.value = 100
     ElMessage.success('分析完成')
   } catch (error) {
     analyzeResult.status = 'failed'
     analyzeResult.message = '分析失败'
     analyzeResult.details = []
+    progressPercentage.value = 100
   } finally {
     analyzing.value = false
     stopLogStream()
@@ -611,5 +676,56 @@ onUnmounted(() => {
   margin-top: 8px;
   font-size: 12px;
   color: #909399;
+}
+
+/* Progress Dialog Styles */
+.progress-content {
+  padding: 10px;
+}
+
+.progress-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: #303133;
+}
+
+.progress-status .status-text {
+  font-weight: 500;
+}
+
+.progress-log-panel {
+  margin-top: 20px;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #e4e7ed;
+  font-size: 13px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.progress-log-header .log-count {
+  font-size: 12px;
+  color: #909399;
+}
+
+.progress-log-content {
+  height: 200px;
+  overflow-y: auto;
+  background: #1e1e1e;
+  padding: 10px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>

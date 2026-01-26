@@ -1,5 +1,5 @@
 # Stage 1: Build frontend
-FROM registry.npmmirror.com/node:18-alpine AS frontend-builder
+FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -17,7 +17,7 @@ RUN npm run build
 
 
 # Stage 2: Python backend
-FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.10-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
