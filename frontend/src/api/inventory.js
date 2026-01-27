@@ -31,3 +31,9 @@ export function importInventory(file) {
 export function getCategories() {
   return request.get('/inventory/categories')
 }
+
+export function downloadTemplate() {
+  return request.get('/inventory/export/template', {
+    responseType: 'blob'
+  })
+}

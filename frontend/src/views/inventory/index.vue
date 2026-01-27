@@ -22,6 +22,9 @@
         <el-button type="primary" @click="handleAdd">
           <el-icon><Plus /></el-icon> 新增
         </el-button>
+        <el-button @click="handleDownloadTemplate">
+          <el-icon><Download /></el-icon> 下载模板
+        </el-button>
         <el-upload
           ref="uploadRef"
           :show-file-list="false"
@@ -146,7 +149,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   getInventoryList, getCategories, createInventory, 
-  updateInventory, deleteInventory, importInventory 
+  updateInventory, deleteInventory, importInventory, downloadTemplate 
 } from '@/api/inventory'
 
 const loading = ref(false)
@@ -301,6 +304,26 @@ const handleImport = async (file) => {
     console.error(error)
   }
   return false
+}
+
+const handleDownloadTemplate = async () => {
+  try {
+    const response = await downloadTemplate()
+    const blob = new Blob([response], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '库存导入模板.xlsx'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    ElMessage.error('下载模板失败')
+    console.error(error)
+  }
 }
 
 onMounted(() => {
