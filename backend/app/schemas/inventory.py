@@ -7,6 +7,7 @@ from decimal import Decimal
 class InventoryBase(BaseModel):
     product_name: str
     category: Optional[str] = None
+    category_alias: Optional[str] = None  # 分类别名，用于模糊匹配
     spec: Optional[str] = None
     quantity: Optional[Decimal] = None
     unit: Optional[str] = None
@@ -25,6 +26,7 @@ class InventoryCreate(InventoryBase):
 class InventoryUpdate(BaseModel):
     product_name: Optional[str] = None
     category: Optional[str] = None
+    category_alias: Optional[str] = None
     spec: Optional[str] = None
     quantity: Optional[Decimal] = None
     unit: Optional[str] = None

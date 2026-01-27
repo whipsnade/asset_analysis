@@ -133,7 +133,12 @@ async def import_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Import inventory from Excel file"""
+    """
+    Import inventory from Excel file
+    根据 产品名称+设备分类+型号规格 去重：
+    - 已存在则更新：数量、销售单价、采购单价、供应商
+    - 不存在则新增
+    """
     if not file.filename.endswith(('.xlsx', '.xls')):
         raise HTTPException(status_code=400, detail="请上传Excel文件(.xlsx或.xls)")
     
@@ -142,13 +147,15 @@ async def import_inventory(
         records = excel_service.parse_inventory_excel(BytesIO(content))
         
         imported_count = 0
+        updated_count = 0
+        
         for record in records:
             # Clean record data
             clean_record = {}
             for key, value in record.items():
-                if key in ['product_name', 'category', 'spec', 'unit', 
+                if key in ['product_name', 'category', 'category_alias', 'spec', 'unit', 
                           'contract_remark', 'purchase_remark', 'supplier']:
-                    clean_record[key] = str(value) if value and str(value) != 'nan' else None
+                    clean_record[key] = str(value).strip() if value and str(value) != 'nan' else None
                 elif key in ['quantity', 'sale_price', 'sale_total', 'purchase_price']:
                     try:
                         if value is None or (isinstance(value, float) and str(value) == 'nan'):
@@ -158,13 +165,57 @@ async def import_inventory(
                     except:
                         clean_record[key] = None
             
-            if clean_record.get('product_name'):
+            if not clean_record.get('product_name'):
+                continue
+            
+            # 根据 产品名称+设备分类+型号规格 查找已存在的记录
+            product_name = clean_record.get('product_name')
+            category = clean_record.get('category') or ''
+            spec = clean_record.get('spec') or ''
+            
+            existing = db.query(AssetInventory).filter(
+                AssetInventory.product_name == product_name,
+                (AssetInventory.category == category) | 
+                ((AssetInventory.category == None) & (category == '')),
+                (AssetInventory.spec == spec) |
+                ((AssetInventory.spec == None) & (spec == ''))
+            ).first()
+            
+            if existing:
+                # 更新已存在的记录
+                if clean_record.get('quantity') is not None:
+                    existing.quantity = clean_record['quantity']
+                if clean_record.get('sale_price') is not None:
+                    existing.sale_price = clean_record['sale_price']
+                if clean_record.get('purchase_price') is not None:
+                    existing.purchase_price = clean_record['purchase_price']
+                if clean_record.get('supplier'):
+                    existing.supplier = clean_record['supplier']
+                # 也更新分类别名（如果有）
+                if clean_record.get('category_alias'):
+                    existing.category_alias = clean_record['category_alias']
+                updated_count += 1
+            else:
+                # 新增记录
                 item = AssetInventory(**clean_record)
                 db.add(item)
                 imported_count += 1
         
         db.commit()
-        return {"message": f"成功导入 {imported_count} 条记录", "count": imported_count}
+        
+        message_parts = []
+        if imported_count > 0:
+            message_parts.append(f"新增 {imported_count} 条")
+        if updated_count > 0:
+            message_parts.append(f"更新 {updated_count} 条")
+        
+        message = "成功" + "，".join(message_parts) + "记录" if message_parts else "没有需要导入的数据"
+        
+        return {
+            "message": message, 
+            "imported": imported_count, 
+            "updated": updated_count
+        }
     
     except Exception as e:
         db.rollback()

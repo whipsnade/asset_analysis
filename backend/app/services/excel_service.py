@@ -76,6 +76,7 @@ class ExcelService:
         column_mapping = {
             '产品名称': 'product_name',
             '设备分类': 'category',
+            '分类别名': 'category_alias',
             '型号规格': 'spec',
             '数量': 'quantity',
             '单位': 'unit',
@@ -293,7 +294,7 @@ class ExcelService:
     def generate_inventory_template(self) -> BytesIO:
         """Generate inventory Excel template"""
         columns = [
-            '产品名称', '设备分类', '型号规格', '数量', '单位',
+            '产品名称', '设备分类', '分类别名', '型号规格', '数量', '单位',
             '销售单价', '销售总价', '合同备注', '采购单价', '采购备注', '供应商渠道'
         ]
         df = pd.DataFrame(columns=columns)

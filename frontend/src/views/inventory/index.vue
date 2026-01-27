@@ -39,7 +39,8 @@
     <el-card class="table-card">
       <el-table :data="tableData" v-loading="loading" stripe border>
         <el-table-column prop="product_name" label="产品名称" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="category" label="设备分类" width="140" show-overflow-tooltip />
+        <el-table-column prop="category" label="设备分类" width="120" show-overflow-tooltip />
+        <el-table-column prop="category_alias" label="分类别名" width="100" show-overflow-tooltip />
         <el-table-column prop="spec" label="型号规格" min-width="180" show-overflow-tooltip />
         <el-table-column prop="quantity" label="数量" width="80" align="center" />
         <el-table-column prop="unit" label="单位" width="60" align="center" />
@@ -88,6 +89,11 @@
           <el-col :span="12">
             <el-form-item label="设备分类" prop="category">
               <el-input v-model="editForm.category" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="分类别名" prop="category_alias">
+              <el-input v-model="editForm.category_alias" placeholder="如：综合布线、监控系统" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -165,6 +171,7 @@ const editForm = reactive({
   id: null,
   product_name: '',
   category: '',
+  category_alias: '',
   spec: '',
   quantity: 0,
   unit: '',
@@ -220,6 +227,7 @@ const resetForm = () => {
     id: null,
     product_name: '',
     category: '',
+    category_alias: '',
     spec: '',
     quantity: 0,
     unit: '',

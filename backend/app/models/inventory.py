@@ -9,6 +9,7 @@ class AssetInventory(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     product_name = Column(String(200), nullable=False)
     category = Column(String(100))
+    category_alias = Column(String(200))  # 分类别名，用于模糊匹配（如：综合布线、监控系统）
     spec = Column(String(500))
     quantity = Column(DECIMAL(10, 2))
     unit = Column(String(20))
