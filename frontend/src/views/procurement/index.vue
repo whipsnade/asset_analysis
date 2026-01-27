@@ -37,10 +37,10 @@
             <el-upload
               ref="uploadRef"
               drag
+              multiple
               :auto-upload="false"
-              :limit="1"
               :on-change="handleFileChange"
-              :on-remove="() => selectedFile = null"
+              :on-remove="handleFileRemove"
               accept=".xlsx,.xls"
             >
               <el-icon size="48" color="#409EFF"><UploadFilled /></el-icon>
@@ -49,19 +49,19 @@
               </div>
               <template #tip>
                 <div class="el-upload__tip">
-                  支持 .xlsx, .xls 格式的采购需求表
+                  支持 .xlsx, .xls 格式，可同时上传多个文件
                 </div>
               </template>
             </el-upload>
             <el-button
               type="primary"
               :loading="analyzing"
-              :disabled="!selectedFile"
+              :disabled="selectedFiles.length === 0"
               style="margin-top: 15px; width: 100%;"
               @click="analyzeFileContent"
             >
               <el-icon><DataAnalysis /></el-icon>
-              开始智能分析
+              开始智能分析{{ selectedFiles.length > 0 ? ` (${selectedFiles.length}个文件)` : '' }}
             </el-button>
           </div>
         </el-card>
@@ -256,11 +256,11 @@
 import { ref, reactive, computed, nextTick, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
-import { analyzeText, analyzeFile, exportResult, getLogStreamUrl } from '@/api/procurement'
+import { analyzeText, analyzeFile, analyzeFiles, exportResult, getLogStreamUrl } from '@/api/procurement'
 
 const inputType = ref('text')
 const textContent = ref('')
-const selectedFile = ref(null)
+const selectedFiles = ref([])
 const analyzing = ref(false)
 const uploadRef = ref(null)
 const exportDialogVisible = ref(false)
@@ -322,8 +322,12 @@ const getConfidenceType = (score) => {
   return 'danger'
 }
 
-const handleFileChange = (file) => {
-  selectedFile.value = file.raw
+const handleFileChange = (file, fileList) => {
+  selectedFiles.value = fileList.map(f => f.raw)
+}
+
+const handleFileRemove = (file, fileList) => {
+  selectedFiles.value = fileList.map(f => f.raw)
 }
 
 const generateSessionId = () => {
@@ -403,7 +407,7 @@ const analyzeTextContent = async () => {
 }
 
 const analyzeFileContent = async () => {
-  if (!selectedFile.value) {
+  if (selectedFiles.value.length === 0) {
     ElMessage.warning('请选择要上传的文件')
     return
   }
@@ -417,7 +421,10 @@ const analyzeFileContent = async () => {
   
   try {
     progressPercentage.value = 30
-    const res = await analyzeFile(selectedFile.value, sessionId)
+    // Use single file API for backward compatibility, or multi-file API
+    const res = selectedFiles.value.length === 1 
+      ? await analyzeFile(selectedFiles.value[0], sessionId)
+      : await analyzeFiles(selectedFiles.value, sessionId)
     Object.assign(analyzeResult, res)
     progressPercentage.value = 100
     ElMessage.success('分析完成')

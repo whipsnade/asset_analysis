@@ -19,6 +19,20 @@ export function analyzeFile(file, sessionId) {
   })
 }
 
+export function analyzeFiles(files, sessionId) {
+  const formData = new FormData()
+  files.forEach(file => {
+    formData.append('files', file)
+  })
+  return request.post('/procurement/analyze-files', formData, {
+    headers: { 
+      'Content-Type': 'multipart/form-data',
+      ...(sessionId ? { 'X-Session-Id': sessionId } : {})
+    },
+    timeout: 300000  // 5 minutes for multiple files
+  })
+}
+
 export function getTaskList(params) {
   return request.get('/procurement/tasks', { params })
 }

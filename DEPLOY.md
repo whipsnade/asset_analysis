@@ -77,13 +77,13 @@ docker build -f Dockerfile.simple -t smart-procurement .
 ### 步骤 3：运行容器
 
 ```bash
-docker run -d \
-  --name smart-procurement-app \
-  -p 8080:80 \
-  -e DATABASE_URL="mysql+pymysql://用户名:密码@数据库地址:端口/数据库名" \
-  -e DEEPSEEK_API_KEY="your-deepseek-api-key" \
-  -e DEEPSEEK_API_URL="https://api.deepseek.com/v1" \
-  --restart unless-stopped \
+docker run -d 
+  --name smart-procurement-app 
+  -p 54321:80 
+  -e DATABASE_URL="mysql+pymysql://income:Vk7#a3DfGtYhJkL9@118.195.236.243:53890/income" 
+  -e DEEPSEEK_API_KEY="sk-0d58e31989a2447daec86f84d4f11dec" 
+  -e DEEPSEEK_API_URL="https://api.deepseek.com/v1" 
+  --restart unless-stopped 
   smart-procurement
 ```
 

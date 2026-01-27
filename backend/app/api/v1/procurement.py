@@ -167,19 +167,40 @@ async def analyze_file(
     current_user: User = Depends(get_current_user),
     x_session_id: Optional[str] = Header(None)
 ):
-    """Analyze Excel procurement request"""
+    """Analyze single Excel procurement request (backward compatible)"""
+    # Delegate to multi-file handler
+    return await analyze_files(
+        files=[file],
+        db=db,
+        current_user=current_user,
+        x_session_id=x_session_id
+    )
+
+
+@router.post("/analyze-files", response_model=AnalyzeResponse)
+async def analyze_files(
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    x_session_id: Optional[str] = Header(None)
+):
+    """Analyze multiple Excel procurement requests and merge results"""
     # Set session for logging
     if x_session_id:
         ai_service.set_session(x_session_id)
     
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        raise HTTPException(status_code=400, detail="请上传Excel文件(.xlsx或.xls)")
+    # Validate files
+    file_names = []
+    for file in files:
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail=f"文件 {file.filename} 格式不支持，请上传Excel文件(.xlsx或.xls)")
+        file_names.append(file.filename)
     
     # Create task
     task = ProcurementTask(
-        task_name=f"文件分析: {file.filename}",
+        task_name=f"文件分析: {', '.join(file_names[:3])}{'...' if len(file_names) > 3 else ''} ({len(files)}个文件)",
         input_type="excel",
-        file_path=file.filename,
+        file_path=", ".join(file_names),
         status="processing",
         create_user_id=current_user.id
     )
@@ -188,14 +209,22 @@ async def analyze_file(
     db.refresh(task)
     
     try:
-        content = await file.read()
-        requirements = excel_service.parse_procurement_excel(BytesIO(content))
+        # Parse all files and merge requirements
+        all_requirements = []
+        for file in files:
+            content = await file.read()
+            requirements = excel_service.parse_procurement_excel(BytesIO(content))
+            # Add file source info
+            for req in requirements:
+                req['_source_file'] = file.filename
+            all_requirements.extend(requirements)
         
         details = []
-        for req in requirements:
+        for req in all_requirements:
             req_name = req.get("name", "")
             req_spec = req.get("spec")
             req_quantity = req.get("quantity")
+            source_file = req.get("_source_file", "")
             
             # Match with inventory
             match_result = await matching_service.match_requirement(
@@ -252,7 +281,7 @@ async def analyze_file(
         return AnalyzeResponse(
             task_id=task.id,
             status="completed",
-            message=f"成功解析 {len(details)} 条采购需求",
+            message=f"成功解析 {len(details)} 条采购需求 (来自{len(files)}个文件)",
             details=details
         )
     
