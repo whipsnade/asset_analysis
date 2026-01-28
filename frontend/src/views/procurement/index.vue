@@ -92,8 +92,26 @@
 
           <el-empty v-if="!analyzeResult.details?.length" description="暂无分析结果，请输入采购需求后点击分析" />
 
-          <div v-else class="result-list">
-            <div v-for="(item, index) in analyzeResult.details" :key="item.id" class="result-item">
+          <div v-else>
+            <!-- 匹配度筛选滑动条 -->
+            <div class="filter-bar">
+              <span class="filter-label">匹配度筛选:</span>
+              <el-slider 
+                v-model="filterConfidence" 
+                :min="0" 
+                :max="100" 
+                :step="5"
+                :format-tooltip="(val) => val + '%'"
+                class="filter-slider"
+              />
+              <span class="filter-value">≥ {{ filterConfidence }}%</span>
+              <span class="filter-count">
+                显示 {{ filteredDetails.length }} / {{ analyzeResult.details?.length || 0 }} 条
+              </span>
+            </div>
+
+          <div class="result-list">
+            <div v-for="(item, index) in filteredDetails" :key="item.id" class="result-item">
               <div class="result-header">
                 <span class="result-index">{{ index + 1 }}</span>
                 <el-tag :type="getConfidenceType(item.confidence_score)" size="small">
@@ -134,6 +152,9 @@
                 {{ item.match_reason }}
               </div>
             </div>
+            <!-- 无匹配结果提示 -->
+            <el-empty v-if="filteredDetails.length === 0" description="当前筛选条件下无匹配结果，请降低匹配度阈值" />
+          </div>
           </div>
         </el-card>
       </el-col>
@@ -269,6 +290,7 @@ const progressDialogVisible = ref(false)
 const logContainer = ref(null)
 const logs = ref([])
 const progressPercentage = ref(0)
+const filterConfidence = ref(0)  // 匹配度筛选阈值
 let eventSource = null
 let sessionId = null
 
@@ -293,6 +315,13 @@ const filteredExportCount = computed(() => {
   if (!analyzeResult.details?.length) return 0
   const threshold = exportForm.min_confidence / 100
   return analyzeResult.details.filter(item => (item.confidence_score || 0) >= threshold).length
+})
+
+// 结果页面的筛选结果
+const filteredDetails = computed(() => {
+  if (!analyzeResult.details?.length) return []
+  const threshold = filterConfidence.value / 100
+  return analyzeResult.details.filter(item => (item.confidence_score || 0) >= threshold)
 })
 
 const statusType = computed(() => {
@@ -683,6 +712,42 @@ onUnmounted(() => {
   margin-top: 8px;
   font-size: 12px;
   color: #909399;
+}
+
+/* 匹配度筛选滑动条样式 */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 15px;
+}
+
+.filter-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.filter-slider {
+  flex: 1;
+  min-width: 150px;
+}
+
+.filter-value {
+  font-size: 13px;
+  color: #409EFF;
+  font-weight: 600;
+  min-width: 55px;
+}
+
+.filter-count {
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
 }
 
 /* Progress Dialog Styles */
