@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from thefuzz import fuzz
+import re
 from app.models.inventory import AssetInventory
 from app.services.ai_service import ai_service
 
@@ -9,6 +10,12 @@ from app.services.ai_service import ai_service
 class MatchingService:
     def __init__(self):
         self.min_fuzzy_score = 60  # Minimum fuzzy match score
+        # Pattern to detect spec-like content in product name
+        self.spec_pattern = re.compile(r'(\d+寸|\d+英寸|\d+口|\d+端口|\d+[TGMK]B?|\d+[MGK]|千兆|万兆|POE|poe)')
+    
+    def _needs_parsing(self, product_name: str) -> bool:
+        """Check if product name contains spec-like content that needs AI parsing"""
+        return bool(self.spec_pattern.search(product_name))
         
     def fuzzy_search(
         self, 
@@ -108,10 +115,18 @@ class MatchingService:
         req_quantity: Optional[float] = None
     ) -> Dict[str, Any]:
         """Match a single requirement with inventory"""
-        # Step 0: Use AI to parse requirement and extract product name + spec
-        parsed = await ai_service.parse_requirement(req_name)
-        parsed_name = parsed.get("product_name", req_name)
-        parsed_spec = parsed.get("spec", "")
+        parsed_name = req_name
+        parsed_spec = ""
+        
+        # Step 0: Only use AI to parse if product name contains spec-like content
+        if self._needs_parsing(req_name):
+            try:
+                parsed = await ai_service.parse_requirement(req_name)
+                parsed_name = parsed.get("product_name", req_name)
+                parsed_spec = parsed.get("spec", "")
+            except Exception as e:
+                # If AI parsing fails, use original name
+                await ai_service._log("WARN", f"[匹配] 需求解析失败，使用原始值: {str(e)}")
         
         # Merge parsed spec with original spec
         if parsed_spec and req_spec:
@@ -134,9 +149,9 @@ class MatchingService:
                 "parsed_spec": parsed_spec
             }
         
-        # Step 2: If high confidence match exists, return directly
+        # Step 2: If high confidence match exists, return directly (skip AI)
         top_candidate = candidates[0]
-        if top_candidate["fuzzy_score"] >= 90:
+        if top_candidate["fuzzy_score"] >= 85:
             reason = f"模糊匹配置信度: {top_candidate['fuzzy_score']:.0f}%"
             if top_candidate.get("category_alias"):
                 reason += f" (分类: {top_candidate['category_alias']})"
@@ -149,7 +164,7 @@ class MatchingService:
                 "parsed_spec": parsed_spec
             }
         
-        # Step 3: Use AI for better matching
+        # Step 3: Use AI for better matching (only when fuzzy score < 85)
         try:
             ai_result = await ai_service.match_inventory(
                 req_name, 
@@ -188,7 +203,7 @@ class MatchingService:
                 "matched_id": top_candidate["id"],
                 "matched_inventory": top_candidate,
                 "confidence": top_candidate["fuzzy_score"] / 100 * 0.5,
-                "reason": f"AI服务异常，使用模糊匹配: {str(e)}",
+                "reason": f"AI服务异常，使用模糊匹配: {str(e)[:50]}",
                 "parsed_name": parsed_name,
                 "parsed_spec": parsed_spec
             }

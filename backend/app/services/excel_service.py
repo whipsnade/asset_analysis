@@ -8,19 +8,24 @@ from openpyxl.utils import get_column_letter
 
 class ExcelService:
     # 表头关键词，用于自动检测表头行
+    # 注意：关键词按优先级排序，越精确的放前面
     HEADER_KEYWORDS = {
-        'product': ['产品名称', '名称', '品名', '商品名称', '产品'],
-        'spec': ['产品描述', '规格', '型号', '描述', '型号规格', '规格型号'],
-        'quantity': ['采购数量', '数量', '需求数量', '采购数量'],
-        'category': ['小类', '分类', '类别', '设备分类'],
+        'product': ['产品名称', '商品名称', '品名'],  # 移除过于宽泛的"名称"和"产品"
+        'spec': ['型号规格', '规格型号', '产品描述', '规格', '型号', '描述'],
+        'quantity': ['采购数量', '需求数量', '数量'],
+        'category': ['小类', '设备分类', '分类', '类别'],
         'unit': ['单位'],
     }
+    
+    # 需要精确匹配的关键词（完全相等，不是包含关系）
+    EXACT_MATCH_KEYWORDS = {'产品名称', '商品名称', '品名', '产品描述', '型号规格', '规格型号'}
     
     def _find_header_row(self, ws) -> Tuple[int, Dict[str, int]]:
         """
         自动检测表头行位置，返回 (行号, 列名映射)
         """
         max_search_rows = min(20, ws.max_row)  # 最多搜索前20行
+        best_match = None  # (row_idx, found_columns, column_mapping, match_score)
         
         for row_idx in range(1, max_search_rows + 1):
             row_values = []
@@ -33,25 +38,45 @@ class ExcelService:
             
             # 检查这一行是否包含表头关键词
             found_columns = {}
+            match_score = 0
             for col_idx, value in enumerate(row_values):
                 if not value:
                     continue
-                    
+                
                 # 检查是否匹配任何关键词
                 for field, keywords in self.HEADER_KEYWORDS.items():
+                    if field in found_columns:
+                        continue  # 已找到该字段，跳过
                     for keyword in keywords:
-                        if keyword in value:
-                            found_columns[field] = col_idx
-                            break
+                        # 精确匹配检查
+                        is_exact_match = (value == keyword)
+                        # 对于精确匹配关键词，必须完全匹配
+                        if keyword in self.EXACT_MATCH_KEYWORDS:
+                            if is_exact_match:
+                                found_columns[field] = col_idx
+                                match_score += 2  # 精确匹配得分更高
+                                break
+                        else:
+                            # 对于其他关键词，允许包含匹配
+                            if keyword in value:
+                                found_columns[field] = col_idx
+                                match_score += 1
+                                break
             
-            # 如果找到了产品名称列，认为这是表头行
+            # 如果找到了产品名称列，考虑作为候选
             if 'product' in found_columns:
                 # 构建完整的列名映射
                 column_mapping = {}
                 for col_idx, value in enumerate(row_values):
                     if value:
                         column_mapping[col_idx] = value
-                return row_idx, column_mapping
+                
+                # 选择匹配度最高的行
+                if best_match is None or match_score > best_match[3]:
+                    best_match = (row_idx, found_columns, column_mapping, match_score)
+        
+        if best_match:
+            return best_match[0], best_match[2]
         
         # 未找到表头，默认第一行
         return 1, {}

@@ -9,9 +9,23 @@ from app.core.config import settings
 # Global log queue for SSE
 log_queues: Dict[str, asyncio.Queue] = {}
 
+# Global HTTP client for connection reuse
+_http_client: Optional[httpx.AsyncClient] = None
+
 
 def get_timestamp():
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+
+async def get_http_client() -> httpx.AsyncClient:
+    """Get or create a shared HTTP client with connection pooling"""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=30.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
+    return _http_client
 
 
 EXTRACT_PROMPT = """你是一个专业的采购需求分析专家。请从以下采购需求中提取结构化信息。
@@ -89,16 +103,22 @@ class AIService:
             }
             await log_queues[self._session_id].put(log_entry)
         
-    async def _call_api(self, prompt: str, purpose: str = "") -> str:
-        """Call DeepSeek API"""
+    async def _call_api(self, prompt: str, purpose: str = "", max_retries: int = 3) -> str:
+        """Call DeepSeek API with retry mechanism"""
         await self._log("INFO", f"[DeepSeek] 开始调用API - {purpose}")
-        await self._log("DEBUG", f"[DeepSeek] API地址: {self.api_url}/chat/completions")
-        await self._log("DEBUG", f"[DeepSeek] Prompt长度: {len(prompt)} 字符")
         
-        start_time = datetime.now()
+        last_error = None
         
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+        for attempt in range(max_retries):
+            if attempt > 0:
+                wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8 seconds
+                await self._log("WARN", f"[DeepSeek] 第{attempt + 1}次重试，等待{wait_time}秒...")
+                await asyncio.sleep(wait_time)
+            
+            start_time = datetime.now()
+            
+            try:
+                client = await get_http_client()
                 await self._log("INFO", f"[DeepSeek] 发送请求中...")
                 response = await client.post(
                     f"{self.api_url}/chat/completions",
@@ -129,15 +149,26 @@ class AIService:
                 
                 return content
                 
-        except httpx.TimeoutException:
-            await self._log("ERROR", f"[DeepSeek] API调用超时 - {purpose}")
-            raise
-        except httpx.HTTPStatusError as e:
-            await self._log("ERROR", f"[DeepSeek] API错误: {e.response.status_code} - {e.response.text[:200]}")
-            raise
-        except Exception as e:
-            await self._log("ERROR", f"[DeepSeek] 调用失败: {str(e)}")
-            raise
+            except httpx.TimeoutException as e:
+                last_error = e
+                await self._log("WARN", f"[DeepSeek] API调用超时 (尝试 {attempt + 1}/{max_retries})")
+            except httpx.ConnectError as e:
+                last_error = e
+                await self._log("WARN", f"[DeepSeek] 网络连接失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                # Don't retry on 4xx errors (except 429 rate limit)
+                if 400 <= e.response.status_code < 500 and e.response.status_code != 429:
+                    await self._log("ERROR", f"[DeepSeek] API错误: {e.response.status_code} - {e.response.text[:200]}")
+                    raise
+                await self._log("WARN", f"[DeepSeek] API错误 (尝试 {attempt + 1}/{max_retries}): {e.response.status_code}")
+            except Exception as e:
+                last_error = e
+                await self._log("WARN", f"[DeepSeek] 调用失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+        
+        # All retries failed
+        await self._log("ERROR", f"[DeepSeek] API调用失败，已重试{max_retries}次 - {purpose}")
+        raise last_error or Exception("API调用失败")
     
     async def extract_requirements(self, content: str) -> List[Dict[str, Any]]:
         """Extract structured requirements from text"""
