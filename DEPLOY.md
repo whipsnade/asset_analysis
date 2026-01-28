@@ -207,7 +207,14 @@ docker rm smart-procurement-app
 docker stop smart-procurement-app
 docker rm smart-procurement-app
 docker build -f Dockerfile.simple -t smart-procurement .
-docker run -d --name smart-procurement-app ... (同上)
+docker run -d 
+  --name smart-procurement-app 
+  -p 54321:80 
+  -e DATABASE_URL="mysql+pymysql://income:Vk7#a3DfGtYhJkL9@118.195.236.243:53890/income" 
+  -e DEEPSEEK_API_KEY="sk-0d58e31989a2447daec86f84d4f11dec" 
+  -e DEEPSEEK_API_URL="https://api.deepseek.com/v1" 
+  --restart unless-stopped 
+  smart-procurement
 ```
 
 ### 数据备份

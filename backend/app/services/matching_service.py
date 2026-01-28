@@ -108,15 +108,30 @@ class MatchingService:
         req_quantity: Optional[float] = None
     ) -> Dict[str, Any]:
         """Match a single requirement with inventory"""
+        # Step 0: Use AI to parse requirement and extract product name + spec
+        parsed = await ai_service.parse_requirement(req_name)
+        parsed_name = parsed.get("product_name", req_name)
+        parsed_spec = parsed.get("spec", "")
+        
+        # Merge parsed spec with original spec
+        if parsed_spec and req_spec:
+            combined_spec = f"{parsed_spec} {req_spec}"
+        elif parsed_spec:
+            combined_spec = parsed_spec
+        else:
+            combined_spec = req_spec
+        
         # Step 1: Fuzzy search for candidates (now includes category_alias)
-        candidates = self.fuzzy_search(db, req_name, req_spec)
+        candidates = self.fuzzy_search(db, parsed_name, combined_spec)
         
         if not candidates:
             return {
                 "matched_id": None,
                 "matched_inventory": None,
                 "confidence": 0,
-                "reason": "未找到匹配的库存项"
+                "reason": "未找到匹配的库存项",
+                "parsed_name": parsed_name,
+                "parsed_spec": parsed_spec
             }
         
         # Step 2: If high confidence match exists, return directly
@@ -129,7 +144,9 @@ class MatchingService:
                 "matched_id": top_candidate["id"],
                 "matched_inventory": top_candidate,
                 "confidence": top_candidate["fuzzy_score"] / 100,
-                "reason": reason
+                "reason": reason,
+                "parsed_name": parsed_name,
+                "parsed_spec": parsed_spec
             }
         
         # Step 3: Use AI for better matching
@@ -151,7 +168,9 @@ class MatchingService:
                     "matched_id": matched_id,
                     "matched_inventory": matched_inv,
                     "confidence": ai_result.get("confidence", 0),
-                    "reason": ai_result.get("reason", "AI匹配")
+                    "reason": ai_result.get("reason", "AI匹配"),
+                    "parsed_name": parsed_name,
+                    "parsed_spec": parsed_spec
                 }
             else:
                 # Return top fuzzy match as fallback
@@ -159,7 +178,9 @@ class MatchingService:
                     "matched_id": top_candidate["id"],
                     "matched_inventory": top_candidate,
                     "confidence": top_candidate["fuzzy_score"] / 100 * 0.5,
-                    "reason": f"AI未匹配，回退到模糊匹配: {top_candidate['product_name']}"
+                    "reason": f"AI未匹配，回退到模糊匹配: {top_candidate['product_name']}",
+                    "parsed_name": parsed_name,
+                    "parsed_spec": parsed_spec
                 }
         except Exception as e:
             # Fallback to fuzzy match on AI error
@@ -167,7 +188,9 @@ class MatchingService:
                 "matched_id": top_candidate["id"],
                 "matched_inventory": top_candidate,
                 "confidence": top_candidate["fuzzy_score"] / 100 * 0.5,
-                "reason": f"AI服务异常，使用模糊匹配: {str(e)}"
+                "reason": f"AI服务异常，使用模糊匹配: {str(e)}",
+                "parsed_name": parsed_name,
+                "parsed_spec": parsed_spec
             }
 
 

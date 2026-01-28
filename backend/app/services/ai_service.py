@@ -31,6 +31,26 @@ EXTRACT_PROMPT = """你是一个专业的采购需求分析专家。请从以下
 {content}"""
 
 
+PARSE_REQUIREMENT_PROMPT = """你是采购需求解析专家。请从以下需求描述中提取产品名称和规格信息。
+
+需求描述：{requirement}
+
+请识别并分离：
+1. 产品名称：核心产品名（如"电子餐牌"、"显示器"、"交换机"等）
+2. 规格描述：尺寸、型号、参数等信息（如"50寸"、"24口"、"1000M"等）
+
+规则：
+- 尺寸描述（如50寸、32英寸、21.5"）应归入规格
+- 端口数量（如24口、48端口）应归入规格
+- 速率/带宽（如千兆、1000M）应归入规格
+- 容量（如500G、1TB）应归入规格
+- 颜色、材质等特征也归入规格
+- 如果没有明显的规格信息，spec返回空字符串
+
+只返回JSON格式，不要有其他内容：
+{{"product_name": "核心产品名", "spec": "规格信息"}}"""
+
+
 MATCH_PROMPT = """你是采购匹配专家。请判断客户需求与候选库存项的匹配度。
 
 客户需求：
@@ -152,6 +172,31 @@ class AIService:
                     pass
             await self._log("ERROR", "需求解析失败")
             return []
+    
+    async def parse_requirement(self, requirement: str) -> Dict[str, str]:
+        """Parse requirement to extract product name and spec using AI"""
+        await self._log("INFO", f"[解析需求] 开始解析: {requirement}")
+        
+        prompt = PARSE_REQUIREMENT_PROMPT.format(requirement=requirement)
+        
+        try:
+            response = await self._call_api(prompt, f"解析需求 '{requirement}'")
+            response = response.strip()
+            
+            if response.startswith("```"):
+                lines = response.split("\n")
+                response = "\n".join(lines[1:-1])
+            
+            result = json.loads(response)
+            product_name = result.get("product_name", requirement)
+            spec = result.get("spec", "")
+            
+            await self._log("INFO", f"[解析需求] 产品名称: {product_name}, 规格: {spec}")
+            return {"product_name": product_name, "spec": spec}
+            
+        except Exception as e:
+            await self._log("WARN", f"[解析需求] 解析失败: {str(e)}, 使用原始值")
+            return {"product_name": requirement, "spec": ""}
     
     async def match_inventory(
         self, 
