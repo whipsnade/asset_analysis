@@ -422,6 +422,14 @@ async def export_analysis_result(
         for item in details:
             matched_inv = item.get("matched_inventory") or {}
             
+            # Determine price and price note
+            sale_price = matched_inv.get("sale_price", "")
+            price_note = ""
+            if not matched_inv:
+                price_note = "未匹配到库存"
+            elif not sale_price:
+                price_note = "库存未设置单价"
+            
             row = {
                 "客户名称缩写": customer_abbr,
                 "项目/门店名称": project_name,
@@ -433,7 +441,8 @@ async def export_analysis_result(
                 "合同型号规格": matched_inv.get("spec", "") or item.get("parsed_spec", ""),
                 "合同数量": item.get("parsed_quantity", ""),
                 "单位": matched_inv.get("unit", ""),
-                "合同单价": matched_inv.get("sale_price", ""),
+                "合同单价": sale_price,
+                "价格备注": price_note,
                 "采购需求补充说明": item.get("remark", ""),
                 "网购链接": item.get("purchase_link", ""),
                 "收货地址": delivery_address
@@ -444,7 +453,7 @@ async def export_analysis_result(
         columns = [
             "客户名称缩写", "项目/门店名称", "我方开票抬头", "需求发起人",
             "采购应下单日期", "货品编码", "合同产品名称", "合同型号规格",
-            "合同数量", "单位", "合同单价", "采购需求补充说明", "网购链接", "收货地址"
+            "合同数量", "单位", "合同单价", "价格备注", "采购需求补充说明", "网购链接", "收货地址"
         ]
         
         df = pd.DataFrame(rows, columns=columns)
